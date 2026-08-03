@@ -42,6 +42,10 @@ class Element:
     def write(self, *args, **kwargs):
         return None
 
+    @contextmanager
+    def expander(self, *args, **kwargs):
+        yield self
+
 
 class StreamlitStub(types.ModuleType):
     def __init__(self):

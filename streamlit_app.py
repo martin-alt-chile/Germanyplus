@@ -23,6 +23,7 @@ from germany_plus.content import (
 )
 from germany_plus.metrics import completed_dates, current_streak, lessons_this_week
 from germany_plus.srs import due_word_ids, mastery_percent, update_vocabulary_progress
+from germany_plus.schedule import daily_lesson_id, next_lesson_id
 from germany_plus.storage import default_state, load_state, save_state
 from germany_plus.theme import apply_theme, wordmark
 
@@ -109,9 +110,28 @@ def _seed(*parts: object) -> int:
     return int(hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16], 16)
 
 
+LESSON_IDS = tuple(lesson.id for lesson in LESSONS)
+
+
+def _sessions_today(state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    current = state or _safe_state()
+    today_iso = _today().isoformat()
+    return [
+        session
+        for session in current.get("sessions", [])
+        if isinstance(session, dict) and str(session.get("date")) == today_iso
+    ]
+
+
+def _daily_lesson() -> Lesson:
+    """The first topic of the day, fixed by the calendar and never by a button."""
+    return LESSON_BY_ID[daily_lesson_id(_today(), LESSON_IDS)]
+
+
 def _today_lesson() -> Lesson:
-    rng = random.Random(_seed(_today().isoformat(), st.session_state.home_nonce))
-    return rng.choice(LESSONS)
+    """The next lesson Lula should receive today, including extra sessions."""
+    completed_ids = [str(session.get("lesson_id")) for session in _sessions_today()]
+    return LESSON_BY_ID[next_lesson_id(_today(), LESSON_IDS, completed_ids)]
 
 
 def _shuffled(values: list[str] | tuple[str, ...], *seed_parts: object) -> list[str]:
@@ -145,6 +165,12 @@ def _clear_lesson() -> None:
     st.session_state.home_nonce = uuid.uuid4().hex
     st.session_state.pending_nav = "Inicio"
     st.rerun()
+
+
+def _start_next_lesson_today() -> None:
+    st.session_state.pop("lesson_run", None)
+    st.session_state.home_nonce = uuid.uuid4().hex
+    _start_lesson(_today_lesson())
 
 
 def _lesson_progress(run: dict[str, Any]) -> tuple[int, int]:
@@ -367,7 +393,11 @@ def _stats_html(state: dict[str, Any]) -> None:
 
 def render_home() -> None:
     state = _safe_state()
+    sessions_today = _sessions_today(state)
+    daily_lesson = _daily_lesson()
     lesson = _today_lesson()
+    session_number = len(sessions_today) + 1
+    is_extra_session = bool(sessions_today)
     due_count = len(due_word_ids(state["vocabulary"], today=_today()))
     skyline = _asset_data_uri("berlin_skyline.svg")
     lesson_art = _asset_data_uri("lesson_scene.svg")
@@ -387,17 +417,32 @@ def render_home() -> None:
     )
     _stats_html(state)
 
-    st.markdown('<div class="gp-section-title">Lección diaria</div>', unsafe_allow_html=True)
+    section_title = "Siguiente sesión" if is_extra_session else "Lección diaria"
+    pill = f"SESIÓN {session_number}" if is_extra_session else "HOY"
+    start_label = "Hacer otra lección" if is_extra_session else "Comenzar"
+    if is_extra_session:
+        schedule_copy = (
+            f"Ya completaste {len(sessions_today)} sesión"
+            f"{'es' if len(sessions_today) != 1 else ''} hoy. Ahora sigue otro tema, "
+            "sin repetir hasta recorrer todo el catálogo."
+        )
+    else:
+        schedule_copy = (
+            "Este tema fue asignado automáticamente por la fecha. Mañana cambiará "
+            "sin que Martín tenga que actualizar la aplicación."
+        )
+
+    st.markdown(f'<div class="gp-section-title">{section_title}</div>', unsafe_allow_html=True)
     st.markdown(
         f"""
         <section class="gp-lesson-card">
           <img class="gp-lesson-art" src="{lesson_art}" alt="Escritorio otoñal con bandera alemana">
           <div class="gp-lesson-overlay"></div>
           <div class="gp-lesson-inner">
-            <span class="gp-today-pill">HOY</span>
+            <span class="gp-today-pill">{html.escape(pill)}</span>
             <div class="gp-kicker">{html.escape(lesson.category)} · {lesson.level}</div>
             <div class="gp-lesson-title">{html.escape(lesson.title_de)}</div>
-            <div class="gp-lesson-copy"><strong style="color:white">Tema:</strong> {html.escape(lesson.title_es)}.<br>Lectura corta, preguntas simples y ayudas en español cuando hagan falta.</div>
+            <div class="gp-lesson-copy"><strong style="color:white">Tema:</strong> {html.escape(lesson.title_es)}.<br>{html.escape(schedule_copy)}</div>
             <div class="gp-meta-row">
               <span class="gp-chip">◷ {lesson.minutes} min</span>
               <span class="gp-chip">20 preguntas</span>
@@ -408,12 +453,14 @@ def render_home() -> None:
         """,
         unsafe_allow_html=True,
     )
-    c1, c2 = st.columns([2, 1])
-    if c1.button("Comenzar", type="primary", width="stretch"):
+    if st.button(start_label, type="primary", width="stretch"):
         _start_lesson(lesson)
-    if c2.button("Cambiar tema", width="stretch"):
-        st.session_state.home_nonce = uuid.uuid4().hex
-        st.rerun()
+
+    if is_extra_session and lesson.id != daily_lesson.id:
+        st.caption(
+            f"El tema inicial de hoy fue «{daily_lesson.title_de}». "
+            "Las sesiones extra avanzan por los demás temas antes de repetir."
+        )
 
     sample_words = list(lesson.vocabulary[:4])
     vocab_rows = "".join(
@@ -422,7 +469,7 @@ def render_home() -> None:
     )
 
     first_q = lesson.questions[0]
-    quiz_token = f"{lesson.id}_{st.session_state.home_nonce}"
+    quiz_token = f"{_today().isoformat()}_{lesson.id}_{session_number}_{st.session_state.home_nonce}"
     quiz_result_key = f"home_quiz_result_{quiz_token}"
     quiz_result = st.session_state.get(quiz_result_key)
     quiz_options = _shuffled(first_q.options, quiz_token, "home-quiz")
@@ -438,11 +485,14 @@ def render_home() -> None:
         )
         reading_col.markdown(
             f"""
-            <div class="gp-feature-heading"><div class="gp-feature-icon red-icon">≡</div><div><div class="gp-feature-title">Leer y entender</div><div class="gp-feature-subtitle">Textos cortos para principiantes</div></div></div>
-            <div class="gp-mini-reading"><strong>{html.escape(lesson.title_es)}</strong><p>{html.escape(lesson.spanish_help[0])}</p></div>
+            <div class="gp-feature-heading"><div class="gp-feature-icon red-icon">≡</div><div><div class="gp-feature-title">Leer y entender</div><div class="gp-feature-subtitle">Primero en alemán; español opcional</div></div></div>
+            <div class="gp-mini-reading"><strong>{html.escape(lesson.title_de)}</strong><p>{html.escape(lesson.paragraphs[0])}</p></div>
             """,
             unsafe_allow_html=True,
         )
+        with reading_col.expander("Ver el mismo resumen en español", expanded=False):
+            st.write(lesson.spanish_help[0])
+
         quiz_col.markdown(
             f"""
             <div class="gp-feature-heading"><div class="gp-feature-icon purple-icon">?</div><div><div class="gp-feature-title">Quiz rápido</div><div class="gp-feature-subtitle">Elige una alternativa</div></div></div>
@@ -675,7 +725,15 @@ def _render_complete(run: dict[str, Any], lesson: Lesson) -> None:
     c1.metric("Comprensión", f"{reading}/10")
     c2.metric("Vocabulario", f"{vocabulary}/10")
     st.info("Equivocarse no rompe el progreso: las palabras difíciles ya quedaron programadas para reaparecer antes.")
-    if st.button("Volver al inicio", type="primary", width="stretch"):
+    next_lesson = _today_lesson()
+    st.markdown(
+        f'<div class="gp-card"><strong>¿Quiere seguir?</strong><p class="gp-helper">La próxima sesión será «{html.escape(next_lesson.title_de)}» ({html.escape(next_lesson.title_es)}). No repetirá tema hasta completar el catálogo de hoy.</p></div>',
+        unsafe_allow_html=True,
+    )
+    c3, c4 = st.columns(2)
+    if c3.button("Hacer otra lección", type="primary", width="stretch"):
+        _start_next_lesson_today()
+    if c4.button("Volver al inicio", width="stretch"):
         _clear_lesson()
 
 
