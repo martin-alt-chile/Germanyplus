@@ -39,6 +39,12 @@ apply_theme()
 
 
 NAV_ITEMS = ["Inicio", "Aprender", "Repaso", "Progreso"]
+NAV_LABELS = {
+    "Inicio": "⌂ Inicio",
+    "Aprender": "▤ Aprender",
+    "Repaso": "↻ Repaso",
+    "Progreso": "▥ Progreso",
+}
 
 LOCAL_TZ = ZoneInfo("America/Santiago")
 
@@ -210,6 +216,7 @@ def _top() -> str:
             "Navegación principal",
             NAV_ITEMS,
             horizontal=True,
+            format_func=lambda item: NAV_LABELS[item],
             label_visibility="collapsed",
             key="main_nav",
         )
@@ -346,30 +353,64 @@ def render_home() -> None:
 
     sample_words = list(lesson.vocabulary[:4])
     vocab_rows = "".join(
-        f'<div class="gp-mini-row"><div><strong>{html.escape(item.german)}</strong><span>{html.escape(item.spanish)}</span></div><div aria-hidden="true">🔊</div></div>'
+        f'<div class="gp-mini-row"><div><strong>{html.escape(item.german)}</strong><span>{html.escape(item.spanish)}</span></div></div>'
         for item in sample_words
     )
+
     first_q = lesson.questions[0]
-    preview_distractors = [option for option in first_q.options if option != first_q.answer][:2]
-    st.markdown(
-        f"""
-        <div class="gp-feature-grid">
-          <section class="gp-feature-card gold">
-            <div class="gp-feature-heading"><div class="gp-feature-icon">Aa</div><div><div class="gp-feature-title">Repaso de vocabulario</div><div class="gp-feature-subtitle">Ayudas y traducciones en español</div></div></div>
+    quiz_token = f"{lesson.id}_{st.session_state.home_nonce}"
+    quiz_result_key = f"home_quiz_result_{quiz_token}"
+    quiz_result = st.session_state.get(quiz_result_key)
+    quiz_options = _shuffled(first_q.options, quiz_token, "home-quiz")
+
+    with st.container(key="home_features"):
+        vocab_col, reading_col, quiz_col = st.columns(3, gap="small")
+        vocab_col.markdown(
+            f"""
+            <div class="gp-feature-heading"><div class="gp-feature-icon gold-icon">Aa</div><div><div class="gp-feature-title">Repaso de vocabulario</div><div class="gp-feature-subtitle">Palabras clave con traducción</div></div></div>
             <div class="gp-mini-list">{vocab_rows}</div>
-          </section>
-          <section class="gp-feature-card red">
-            <div class="gp-feature-heading"><div class="gp-feature-icon">≡</div><div><div class="gp-feature-title">Leer y entender</div><div class="gp-feature-subtitle">Textos cortos para principiantes</div></div></div>
+            """,
+            unsafe_allow_html=True,
+        )
+        reading_col.markdown(
+            f"""
+            <div class="gp-feature-heading"><div class="gp-feature-icon red-icon">≡</div><div><div class="gp-feature-title">Leer y entender</div><div class="gp-feature-subtitle">Textos cortos para principiantes</div></div></div>
             <div class="gp-mini-reading"><strong>{html.escape(lesson.title_es)}</strong><p>{html.escape(lesson.spanish_help[0])}</p></div>
-          </section>
-          <section class="gp-feature-card purple">
-            <div class="gp-feature-heading"><div class="gp-feature-icon">?</div><div><div class="gp-feature-title">Quiz rápido</div><div class="gp-feature-subtitle">Alternativas grandes y legibles</div></div></div>
-            <div class="gp-mini-quiz"><div class="gp-mini-question">{html.escape(first_q.prompt)}</div><div class="gp-mini-option">A · {html.escape(preview_distractors[0])}</div><div class="gp-mini-option correct">B · {html.escape(first_q.answer)} ✓</div><div class="gp-mini-option">C · {html.escape(preview_distractors[1])}</div></div>
-          </section>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
+        quiz_col.markdown(
+            f"""
+            <div class="gp-feature-heading"><div class="gp-feature-icon purple-icon">?</div><div><div class="gp-feature-title">Quiz rápido</div><div class="gp-feature-subtitle">Elige una alternativa</div></div></div>
+            <div class="gp-mini-question">{html.escape(first_q.prompt)}</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        home_choice = quiz_col.radio(
+            "Alternativas del quiz rápido",
+            quiz_options,
+            index=None,
+            label_visibility="collapsed",
+            key=f"home_quiz_choice_{quiz_token}",
+            disabled=quiz_result is not None,
+        )
+        if quiz_result is None:
+            if quiz_col.button("Responder", key=f"home_quiz_button_{quiz_token}", width="stretch"):
+                if home_choice is None:
+                    quiz_col.warning("Elige una alternativa primero.")
+                else:
+                    st.session_state[quiz_result_key] = {
+                        "choice": home_choice,
+                        "correct": home_choice == first_q.answer,
+                    }
+                    st.rerun()
+        else:
+            explanation = html.escape(_friendly_explanation(first_q.explanation))
+            if quiz_result.get("correct"):
+                message = f'<div class="gp-feedback-ok gp-mini-feedback"><strong>¡Bien!</strong> {explanation}</div>'
+            else:
+                message = f'<div class="gp-feedback-bad gp-mini-feedback"><strong>Casi.</strong> La alternativa correcta es «{html.escape(first_q.answer)}». {explanation}</div>'
+            quiz_col.markdown(message, unsafe_allow_html=True)
 
     st.markdown('<div class="gp-section-title">Repaso inteligente</div>', unsafe_allow_html=True)
     st.markdown(

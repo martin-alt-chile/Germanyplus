@@ -24,6 +24,15 @@ class SessionState(dict):
 
 
 class Element:
+    def markdown(self, *args, **kwargs):
+        return None
+
+    def radio(self, label, options, **kwargs):
+        return options[0] if options else None
+
+    def warning(self, *args, **kwargs):
+        return None
+
     def button(self, *args, **kwargs):
         return False
 

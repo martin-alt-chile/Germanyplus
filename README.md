@@ -2,15 +2,14 @@
 
 Aplicación móvil de alemán A1 para **Lula**, construida con Python y Streamlit.
 
-## Qué cambió en v1.1
+## Qué cambió en v1.2
 
-- Interfaz rediseñada para acercarse al mockup: portada otoñal, silueta de Berlín, tarjeta oscura de lección, panel unificado de racha/progreso/XP, tarjetas de práctica, categorías y navegación inferior.
-- Se eliminó completamente la fotografía de perfil; ahora aparece una insignia con la letra **L**.
-- Corrección global de contraste: textos oscuros sobre fondos claros y textos blancos solo sobre superficies oscuras.
-- Alternativas opacas, grandes y legibles, incluso después de responder.
-- Feedback más natural: “¡Bien!” o “Casi”, seguido de una explicación breve, sin frases repetitivas como “Respuesta correcta: … El texto dice…”.
-- Contenido A1 con traducciones, pronunciación aproximada y ayudas en español.
-- Supabase actualizado para Secret keys (`sb_secret_...`) y compatible con `service_role` de proyectos antiguos.
+- Se eliminaron los íconos de parlante que parecían reproducir audio, pero no tenían una acción real.
+- El **Quiz rápido de Inicio ahora funciona**: Lula puede seleccionar una alternativa, responder y recibir una explicación breve y natural.
+- La respuesta correcta ya no aparece marcada antes de contestar.
+- La navegación inferior fue corregida para mantener cada nombre en una sola línea y ocultar los círculos negros del control interno de Streamlit.
+- Se agregaron íconos compactos a Inicio, Aprender, Repaso y Progreso sin cambiar la lógica de navegación.
+- Se conserva la conexión con Supabase, el respaldo local y todas las correcciones de contraste de v1.1.
 
 ## Funciones
 
