@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +16,7 @@ LOCAL_STATE_PATH = Path(".local/germany_plus_state.json")
 
 def default_state() -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "xp": 0,
         "sessions": [],
         "vocabulary": {},
@@ -39,15 +39,38 @@ def _normalise_state(raw: Any) -> dict[str, Any]:
     if not isinstance(base.get("preferences"), dict):
         base["preferences"] = default_state()["preferences"]
     base["xp"] = int(base.get("xp") or 0)
+    base["version"] = 2
     return base
 
 
-def _supabase_config() -> tuple[str, str] | None:
+def _read_secret(*names: str) -> str:
+    """Read either top-level secrets or values inside [supabase]."""
     try:
-        url = str(st.secrets.get("SUPABASE_URL", "")).strip().rstrip("/")
-        key = str(st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")).strip()
+        for name in names:
+            value = st.secrets.get(name, "")
+            if value:
+                return str(value).strip()
+        section = st.secrets.get("supabase", {})
+        if hasattr(section, "get"):
+            for name in names:
+                compact = name.lower().replace("supabase_", "")
+                value = section.get(compact, "")
+                if value:
+                    return str(value).strip()
     except Exception:
-        return None
+        return ""
+    return ""
+
+
+def _supabase_config() -> tuple[str, str] | None:
+    url = _read_secret("SUPABASE_URL", "url").rstrip("/")
+    # Current Supabase projects use sb_secret_...; legacy service_role also works.
+    key = _read_secret(
+        "SUPABASE_SECRET_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "secret_key",
+        "service_role_key",
+    )
     if not url or not key:
         return None
     return url, key
@@ -58,6 +81,7 @@ def _headers(key: str, *, prefer: str | None = None) -> dict[str, str]:
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
+        "Accept": "application/json",
     }
     if prefer:
         headers["Prefer"] = prefer
@@ -73,7 +97,7 @@ def _read_remote() -> dict[str, Any] | None:
         f"{url}/rest/v1/germany_plus_state",
         headers=_headers(key),
         params={"user_id": f"eq.{USER_ID}", "select": "state", "limit": "1"},
-        timeout=8,
+        timeout=10,
     )
     response.raise_for_status()
     rows = response.json()
@@ -90,14 +114,14 @@ def _write_remote(state: dict[str, Any]) -> None:
     payload = {
         "user_id": USER_ID,
         "state": state,
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     response = requests.post(
         f"{url}/rest/v1/germany_plus_state",
         headers=_headers(key, prefer="resolution=merge-duplicates,return=minimal"),
         params={"on_conflict": "user_id"},
         json=payload,
-        timeout=8,
+        timeout=10,
     )
     response.raise_for_status()
 
@@ -128,20 +152,19 @@ def storage_mode() -> str:
 
 
 def load_state() -> tuple[dict[str, Any], str, str | None]:
-    """Load state, preferring Supabase and falling back to the local JSON file."""
+    """Load from Supabase first, with a safe local fallback for development."""
     if _supabase_config():
         try:
             state = _read_remote()
             if state is not None:
                 return deepcopy(state), "Supabase", None
         except Exception as exc:  # pragma: no cover - network-dependent
-            local = _read_local()
-            return local, "Local de respaldo", str(exc)
+            return _read_local(), "Local de respaldo", str(exc)
     return _read_local(), "Local", None
 
 
 def save_state(state: dict[str, Any]) -> tuple[str, str | None]:
-    """Persist state remotely when possible and always maintain a local backup."""
+    """Save remotely when configured and always keep a local development backup."""
     clean_state = _normalise_state(state)
     local_error: str | None = None
     try:

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 250" role="img" aria-label="Silueta ilustrada de Berlín en otoño">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="1">
+      <stop offset="0" stop-color="#fffdf8" stop-opacity="0"/>
+      <stop offset=".45" stop-color="#fff3df" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#ffe3bd" stop-opacity=".95"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" x2="1">
+      <stop offset="0" stop-color="#f8d6ad"/>
+      <stop offset="1" stop-color="#ef8f54"/>
+    </linearGradient>
+  </defs>
+  <rect width="1000" height="250" fill="url(#sky)"/>
+  <circle cx="505" cy="62" r="35" fill="#fff9e8" opacity=".9"/>
+  <g fill="#dfb68a" opacity=".82">
+    <rect x="520" y="73" width="12" height="112" rx="5"/>
+    <path d="M526 18l8 52h-16z"/>
+    <ellipse cx="526" cy="83" rx="28" ry="10"/>
+    <ellipse cx="526" cy="93" rx="21" ry="8"/>
+    <rect x="522" y="27" width="8" height="30"/>
+  </g>
+  <g fill="#d7ae82" opacity=".85">
+    <path d="M610 117h160v68H610z"/>
+    <path d="M600 118l90-42 90 42z"/>
+    <rect x="625" y="126" width="15" height="59"/>
+    <rect x="650" y="126" width="15" height="59"/>
+    <rect x="675" y="126" width="15" height="59"/>
+    <rect x="700" y="126" width="15" height="59"/>
+    <rect x="725" y="126" width="15" height="59"/>
+    <rect x="750" y="126" width="15" height="59"/>
+    <rect x="628" y="104" width="134" height="13"/>
+    <path d="M683 75h14v-18h7v18h13l-17 9z"/>
+  </g>
+  <g fill="#e5c39d" opacity=".9">
+    <rect x="305" y="135" width="64" height="51"/>
+    <rect x="316" y="96" width="18" height="90"/>
+    <rect x="342" y="110" width="18" height="76"/>
+    <path d="M325 67l12 29h-24zM351 82l12 28h-24z"/>
+    <circle cx="325" cy="130" r="5" fill="#fff2d8"/>
+    <circle cx="351" cy="142" r="5" fill="#fff2d8"/>
+  </g>
+  <g fill="#d99a66" opacity=".72">
+    <circle cx="830" cy="145" r="38"/>
+    <circle cx="865" cy="128" r="47"/>
+    <circle cx="915" cy="150" r="52"/>
+    <circle cx="955" cy="115" r="34"/>
+    <circle cx="250" cy="158" r="42"/>
+    <circle cx="196" cy="142" r="36"/>
+  </g>
+  <path d="M0 184c150-28 252 20 393-4 155-27 277-4 365 2 91 6 150-17 242-9v77H0z" fill="url(#ground)" opacity=".55"/>
+</svg>

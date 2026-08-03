@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import html
 import random
@@ -37,7 +38,7 @@ st.set_page_config(
 apply_theme()
 
 
-NAV_ITEMS = ["Inicio", "Lección", "Repaso", "Progreso"]
+NAV_ITEMS = ["Inicio", "Aprender", "Repaso", "Progreso"]
 
 LOCAL_TZ = ZoneInfo("America/Santiago")
 
@@ -129,7 +130,7 @@ def _start_lesson(lesson: Lesson | None = None) -> None:
         "vocab_ids": vocab_ids,
         "started_at": _local_now().isoformat(timespec="seconds"),
     }
-    st.session_state.pending_nav = "Lección"
+    st.session_state.pending_nav = "Aprender"
     st.rerun()
 
 
@@ -201,7 +202,7 @@ def _complete_lesson(run: dict[str, Any], lesson: Lesson) -> None:
 
 
 def _top() -> str:
-    wordmark()
+    wordmark(streak=current_streak(_safe_state(), today=_today()))
     if "pending_nav" in st.session_state:
         st.session_state.main_nav = st.session_state.pop("pending_nav")
     with st.container(key="main_navigation"):
@@ -213,6 +214,41 @@ def _top() -> str:
             key="main_nav",
         )
     return selected
+
+
+
+def _asset_data_uri(filename: str) -> str:
+    """Return a local SVG/PNG as a data URI so Streamlit Cloud needs no static server."""
+    path = Path(__file__).resolve().parent / "assets" / filename
+    suffix = path.suffix.lower()
+    mime = {".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}.get(suffix, "application/octet-stream")
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def _friendly_explanation(text: str) -> str:
+    """Make short A1 feedback sound like a tutor, not a database answer key."""
+    cleaned = text.strip()
+    exact = {
+        "El texto dice que Lula es nueva en un curso de alemán.": "Al comienzo se cuenta que Lula acaba de entrar a un curso de alemán.",
+        "El texto dice «Brot mit Käse».": "En el desayuno aparece «Brot mit Käse», que significa «pan con queso».",
+        "El texto dice «Sie essen Suppe».": "La frase «Sie essen Suppe» significa que comen sopa.",
+        "El texto dice «erster Tag» en la oficina.": "«Erster Tag» significa «primer día», y la escena ocurre en la oficina.",
+        "El texto dice «um zehn Uhr».": "«Um zehn Uhr» significa «a las diez».",
+        "El texto dice «Lula trifft Ana».": "«Lula trifft Ana» significa que Lula se encuentra con Ana.",
+        "El texto dice «Das Café ist ruhig».": "«Das Café ist ruhig» significa que el café es tranquilo.",
+        "El texto dice «sehr müde».": "«Sehr müde» significa «muy cansada».",
+        "El texto dice «zwei Freunde».": "«Zwei Freunde» significa «dos amigos».",
+    }
+    if cleaned in exact:
+        return exact[cleaned]
+    if cleaned.startswith("El texto dice «"):
+        return cleaned.replace("El texto dice", "En la lectura aparece", 1)
+    if cleaned.startswith("El texto dice que "):
+        return "La lectura cuenta que " + cleaned[len("El texto dice que "):]
+    if cleaned.startswith("La última frase dice que "):
+        return "Al final se cuenta que " + cleaned[len("La última frase dice que "):]
+    return cleaned
 
 
 def _storage_note() -> None:
@@ -233,23 +269,24 @@ def _stats_html(state: dict[str, Any]) -> None:
     streak = current_streak(state, today=_today())
     week = lessons_this_week(state, today=_today())
     xp = int(state.get("xp") or 0)
+    progress = max(0, min(100, round((week / 7) * 100)))
     st.markdown(
         f"""
-        <div class="gp-stats">
-          <div class="gp-stat">
-            <div class="gp-stat-label">Racha</div>
+        <div class="gp-stats-panel">
+          <div class="gp-stat-block">
+            <div class="gp-stat-label">🔥 Tu racha</div>
             <div class="gp-stat-value">{streak} días</div>
-            <div class="gp-stat-note">Constancia antes que intensidad</div>
+            <div class="gp-stat-note">Un poco cada día vale más que estudiar todo de golpe.</div>
           </div>
-          <div class="gp-stat">
-            <div class="gp-stat-label">Esta semana</div>
-            <div class="gp-stat-value">{week} / 7</div>
-            <div class="gp-stat-note">Meta flexible: una sesión diaria</div>
+          <div class="gp-stat-block">
+            <div class="gp-stat-label">Tu progreso semanal</div>
+            <div class="gp-stat-value"><span class="accent">{week}</span> / 7 lecciones</div>
+            <div class="gp-progress-track"><div class="gp-progress-fill" style="width:{progress}%"></div></div>
           </div>
-          <div class="gp-stat">
-            <div class="gp-stat-label">Experiencia</div>
-            <div class="gp-stat-value">{xp} XP</div>
-            <div class="gp-stat-note">Se gana al completar, no al abrir</div>
+          <div class="gp-stat-block gp-xp">
+            <div class="gp-xp-star">★</div>
+            <div class="gp-stat-value">{xp}</div>
+            <div class="gp-stat-note">XP</div>
           </div>
         </div>
         """,
@@ -261,32 +298,39 @@ def render_home() -> None:
     state = _safe_state()
     lesson = _today_lesson()
     due_count = len(due_word_ids(state["vocabulary"], today=_today()))
+    skyline = _asset_data_uri("berlin_skyline.svg")
+    lesson_art = _asset_data_uri("lesson_scene.svg")
 
     st.markdown(
-        """
-        <section class="gp-hero">
-          <h1 class="gp-greeting">Hallo Lula 🍂</h1>
-          <p class="gp-subtitle">Kleine Schritte, große Fortschritte. Alemán útil, desde cero y sin apuro.</p>
-          <span class="gp-level">Nivel actual · A1 inicial</span>
+        f"""
+        <section class="gp-home-header">
+          <img class="gp-header-skyline" src="{skyline}" alt="Silueta ilustrada de Berlín">
+          <div class="gp-header-copy">
+            <h1 class="gp-greeting">Hallo Lula 🍂</h1>
+            <p class="gp-subtitle">Pequeños pasos, grandes progresos. Alemán A1 con apoyo claro en español.</p>
+            <span class="gp-level">A1 · recién comenzando</span>
+          </div>
         </section>
         """,
         unsafe_allow_html=True,
     )
     _stats_html(state)
 
-    st.markdown('<div class="gp-section-title">Lección de hoy</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gp-section-title">Lección diaria</div>', unsafe_allow_html=True)
     st.markdown(
         f"""
         <section class="gp-lesson-card">
-          <div class="gp-lesson-accent"></div>
+          <img class="gp-lesson-art" src="{lesson_art}" alt="Escritorio otoñal con bandera alemana">
+          <div class="gp-lesson-overlay"></div>
           <div class="gp-lesson-inner">
+            <span class="gp-today-pill">HOY</span>
             <div class="gp-kicker">{html.escape(lesson.category)} · {lesson.level}</div>
             <div class="gp-lesson-title">{html.escape(lesson.title_de)}</div>
-            <div class="gp-lesson-copy">{html.escape(lesson.title_es)}. Lectura breve, 10 preguntas de comprensión y 10 de vocabulario con ayuda en español.</div>
+            <div class="gp-lesson-copy"><strong style="color:white">Tema:</strong> {html.escape(lesson.title_es)}.<br>Lectura corta, preguntas simples y ayudas en español cuando hagan falta.</div>
             <div class="gp-meta-row">
-              <span class="gp-chip">{lesson.minutes} minutos</span>
+              <span class="gp-chip">◷ {lesson.minutes} min</span>
               <span class="gp-chip">20 preguntas</span>
-              <span class="gp-chip">Explicaciones en español</span>
+              <span class="gp-chip">A1 guiado</span>
             </div>
           </div>
         </section>
@@ -294,32 +338,55 @@ def render_home() -> None:
         unsafe_allow_html=True,
     )
     c1, c2 = st.columns([2, 1])
-    if c1.button("Comenzar lección", type="primary", width="stretch"):
+    if c1.button("Comenzar", type="primary", width="stretch"):
         _start_lesson(lesson)
     if c2.button("Cambiar tema", width="stretch"):
         st.session_state.home_nonce = uuid.uuid4().hex
         st.rerun()
 
-    st.markdown('<div class="gp-section-title">Repaso inteligente</div>', unsafe_allow_html=True)
+    sample_words = list(lesson.vocabulary[:4])
+    vocab_rows = "".join(
+        f'<div class="gp-mini-row"><div><strong>{html.escape(item.german)}</strong><span>{html.escape(item.spanish)}</span></div><div aria-hidden="true">🔊</div></div>'
+        for item in sample_words
+    )
+    first_q = lesson.questions[0]
+    preview_distractors = [option for option in first_q.options if option != first_q.answer][:2]
     st.markdown(
         f"""
-        <div class="gp-card">
-          <h3>{due_count} palabras para repasar</h3>
-          <p class="gp-helper">Las palabras reaparecen según tus aciertos y errores. Las que cuestan vuelven antes; las dominadas se espacian.</p>
+        <div class="gp-feature-grid">
+          <section class="gp-feature-card gold">
+            <div class="gp-feature-heading"><div class="gp-feature-icon">Aa</div><div><div class="gp-feature-title">Repaso de vocabulario</div><div class="gp-feature-subtitle">Ayudas y traducciones en español</div></div></div>
+            <div class="gp-mini-list">{vocab_rows}</div>
+          </section>
+          <section class="gp-feature-card red">
+            <div class="gp-feature-heading"><div class="gp-feature-icon">≡</div><div><div class="gp-feature-title">Leer y entender</div><div class="gp-feature-subtitle">Textos cortos para principiantes</div></div></div>
+            <div class="gp-mini-reading"><strong>{html.escape(lesson.title_es)}</strong><p>{html.escape(lesson.spanish_help[0])}</p></div>
+          </section>
+          <section class="gp-feature-card purple">
+            <div class="gp-feature-heading"><div class="gp-feature-icon">?</div><div><div class="gp-feature-title">Quiz rápido</div><div class="gp-feature-subtitle">Alternativas grandes y legibles</div></div></div>
+            <div class="gp-mini-quiz"><div class="gp-mini-question">{html.escape(first_q.prompt)}</div><div class="gp-mini-option">A · {html.escape(preview_distractors[0])}</div><div class="gp-mini-option correct">B · {html.escape(first_q.answer)} ✓</div><div class="gp-mini-option">C · {html.escape(preview_distractors[1])}</div></div>
+          </section>
         </div>
         """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="gp-section-title">Repaso inteligente</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="gp-card"><h3>{due_count} palabras para repasar</h3><p class="gp-helper">Las palabras que cuestan vuelven antes. Las que ya manejas aparecen con menos frecuencia.</p></div>',
         unsafe_allow_html=True,
     )
     if st.button("Ir al repaso", width="stretch"):
         _go("Repaso")
 
-    st.markdown('<div class="gp-section-title">Contextos A1</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gp-section-title">Categorías</div>', unsafe_allow_html=True)
     category_counts: dict[str, int] = {}
     for item in LESSONS:
         category_counts[item.category] = category_counts.get(item.category, 0) + len(item.vocabulary)
+    icons = {"Vida diaria": "☀", "Conversación": "💬", "Universidad": "A", "Trabajo": "▣", "Viajes": "✈", "Comida": "◉", "Salud": "+", "Tiempo libre": "♪"}
     cards = "".join(
-        f'<div class="gp-category"><div class="gp-cat-line"></div><strong>{html.escape(category)}</strong><span>{category_counts.get(category, 0)} palabras iniciales</span></div>'
-        for category in CATEGORY_ORDER
+        f'<div class="gp-category"><div class="gp-category-icon">{icons.get(category, "A")}</div><strong>{html.escape(category)}</strong><span>{category_counts.get(category, 0)} palabras A1</span><div class="gp-cat-progress"><i style="width:{min(85, 18 + idx * 7)}%"></i></div></div>'
+        for idx, category in enumerate(CATEGORY_ORDER)
     )
     st.markdown(f'<div class="gp-category-grid">{cards}</div>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
@@ -387,14 +454,16 @@ def _render_comprehension(run: dict[str, Any], lesson: Lesson) -> None:
                     run["reading_correct"] += 1
                 st.rerun()
     else:
+        explanation = html.escape(_friendly_explanation(question.explanation))
+        answer = html.escape(question.answer)
         if prior["correct"]:
             st.markdown(
-                f'<div class="gp-feedback-ok"><strong>Correcto.</strong> {html.escape(question.explanation)}</div>',
+                f'<div class="gp-feedback-ok"><strong>¡Bien!</strong> {explanation}</div>',
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                f'<div class="gp-feedback-bad"><strong>Respuesta correcta:</strong> {html.escape(question.answer)}.<br>{html.escape(question.explanation)}</div>',
+                f'<div class="gp-feedback-bad"><strong>Casi.</strong> La respuesta es «{answer}». {explanation}</div>',
                 unsafe_allow_html=True,
             )
         label = "Pasar a vocabulario" if index == 9 else "Siguiente pregunta"
@@ -452,13 +521,11 @@ def _render_vocabulary(run: dict[str, Any], lesson: Lesson) -> None:
                 _persist()
                 st.rerun()
     else:
+        word_pair = f'«{html.escape(item.german)}» significa «{html.escape(item.spanish)}».'
         if prior["correct"]:
-            feedback = '<div class="gp-feedback-ok"><strong>Correcto.</strong> Buen reconocimiento de la palabra.</div>'
+            feedback = f'<div class="gp-feedback-ok"><strong>¡Eso es!</strong> {word_pair}</div>'
         else:
-            feedback = (
-                f'<div class="gp-feedback-bad"><strong>Respuesta correcta:</strong> '
-                f'{html.escape(question["answer"])}.<br>Esta palabra volverá antes en el repaso.</div>'
-            )
+            feedback = f'<div class="gp-feedback-bad"><strong>Casi.</strong> {word_pair} La volverás a ver pronto para fijarla mejor.</div>'
         st.markdown(feedback, unsafe_allow_html=True)
         tip = f"<br><strong>Pista:</strong> {html.escape(item.tip)}" if item.tip else ""
         st.markdown(
@@ -610,7 +677,7 @@ def _render_review_run(run: dict[str, Any]) -> None:
         <div class="gp-card">
           <span class="gp-question-number">{html.escape(str(run.get('mode', 'Repaso')))} · {index + 1} de {len(queue)}</span>
           <div class="gp-question-title">¿Qué significa «{html.escape(item.german)}»?</div>
-          <p class="gp-helper">El repaso usa solamente palabras existentes y filtra cualquier registro antiguo inválido.</p>
+          <p class="gp-helper">Elige la traducción que mejor corresponde. Después verás un ejemplo sencillo.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -636,9 +703,12 @@ def _render_review_run(run: dict[str, Any]) -> None:
                 st.rerun()
     else:
         feedback_class = "gp-feedback-ok" if prior["correct"] else "gp-feedback-bad"
-        heading = "Correcto." if prior["correct"] else f"Respuesta correcta: {item.spanish}."
+        if prior["correct"]:
+            message = f'<strong>¡Bien!</strong> «{html.escape(item.german)}» significa «{html.escape(item.spanish)}».'
+        else:
+            message = f'<strong>Casi.</strong> «{html.escape(item.german)}» significa «{html.escape(item.spanish)}». La practicaremos de nuevo más adelante.'
         st.markdown(
-            f'<div class="{feedback_class}"><strong>{html.escape(heading)}</strong></div>',
+            f'<div class="{feedback_class}">{message}</div>',
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -803,7 +873,7 @@ with st.container():
     page = _top()
     if page == "Inicio":
         render_home()
-    elif page == "Lección":
+    elif page == "Aprender":
         render_lesson()
     elif page == "Repaso":
         render_review()

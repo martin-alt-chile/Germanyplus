@@ -1,24 +1,30 @@
--- Germany+ guarda todo el progreso de Lula en una sola fila JSON.
--- Ejecuta este archivo una sola vez en Supabase > SQL Editor.
+-- Germany+ · persistencia para una sola usuaria (Lula)
+-- Ejecuta TODO este archivo una sola vez en Supabase > SQL Editor.
 
 create table if not exists public.germany_plus_state (
     user_id text primary key,
     state jsonb not null default '{}'::jsonb,
-    updated_at timestamptz not null default now()
+    updated_at timestamptz not null default now(),
+    constraint germany_plus_state_is_object
+      check (jsonb_typeof(state) = 'object')
 );
+
+comment on table public.germany_plus_state is
+  'Estado completo de Germany+; una fila JSON por perfil.';
 
 alter table public.germany_plus_state enable row level security;
 
--- La app usa la service role key solamente desde el servidor de Streamlit.
--- Esa clave omite RLS; no debe aparecer en GitHub ni en el navegador.
-revoke all on public.germany_plus_state from anon, authenticated;
-grant select, insert, update, delete on public.germany_plus_state to service_role;
+-- Germany+ se conecta desde el servidor de Streamlit usando una Secret key
+-- (sb_secret_...) o, en proyectos antiguos, service_role. Ambas son claves
+-- de servidor y omiten RLS. No deben publicarse ni quedar en GitHub.
+revoke all on table public.germany_plus_state from anon, authenticated;
+grant select, insert, update, delete on table public.germany_plus_state to service_role;
 
 insert into public.germany_plus_state (user_id, state)
 values (
     'lula',
     '{
-      "version": 1,
+      "version": 2,
       "xp": 0,
       "sessions": [],
       "vocabulary": {},
@@ -29,3 +35,8 @@ values (
     }'::jsonb
 )
 on conflict (user_id) do nothing;
+
+-- Comprobación final: debe devolver una fila llamada lula.
+select user_id, updated_at, jsonb_typeof(state) as state_type
+from public.germany_plus_state
+where user_id = 'lula';
