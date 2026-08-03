@@ -272,6 +272,70 @@ def _storage_note() -> None:
             st.code(str(st.session_state.storage_error))
 
 
+
+def _choice_key(prefix: str) -> str:
+    return f"{prefix}_selected"
+
+
+def _choice_buttons(
+    options: list[str] | tuple[str, ...],
+    *,
+    key_prefix: str,
+    container: Any = st,
+) -> str | None:
+    """Render reliable, high-contrast answer buttons instead of Streamlit radios.
+
+    Radio labels were being hidden by Streamlit's generated styles on some mobile
+    deployments. Buttons keep every alternative visible and still allow the user
+    to select an answer before submitting it.
+    """
+    selected_key = _choice_key(key_prefix)
+    selected = st.session_state.get(selected_key)
+    choice_container = (
+        container.container(key=f"choice_buttons_{key_prefix}")
+        if hasattr(container, "container")
+        else st.container(key=f"choice_buttons_{key_prefix}")
+    )
+    with choice_container:
+        for index, option in enumerate(options):
+            letter = chr(65 + index)
+            is_selected = selected == option
+            label = f"{'✓ ' if is_selected else ''}{letter} · {option}"
+            if st.button(
+                label,
+                key=f"{key_prefix}_option_{index}",
+                type="primary" if is_selected else "secondary",
+                width="stretch",
+            ):
+                st.session_state[selected_key] = option
+                st.rerun()
+    return st.session_state.get(selected_key)
+
+
+def _answered_options_html(
+    options: list[str] | tuple[str, ...],
+    *,
+    answer: str,
+    selected: str,
+) -> str:
+    rows: list[str] = []
+    for index, option in enumerate(options):
+        letter = chr(65 + index)
+        css_class = ""
+        symbol = ""
+        if option == answer:
+            css_class = " correct"
+            symbol = '<span aria-hidden="true">✓</span>'
+        elif option == selected:
+            css_class = " wrong"
+            symbol = '<span aria-hidden="true">×</span>'
+        rows.append(
+            f'<div class="gp-result-option{css_class}"><strong>{letter}</strong>'
+            f'<span>{html.escape(option)}</span>{symbol}</div>'
+        )
+    return '<div class="gp-result-options">' + "".join(rows) + "</div>"
+
+
 def _stats_html(state: dict[str, Any]) -> None:
     streak = current_streak(state, today=_today())
     week = lessons_this_week(state, today=_today())
@@ -386,18 +450,15 @@ def render_home() -> None:
             """,
             unsafe_allow_html=True,
         )
-        home_choice = quiz_col.radio(
-            "Alternativas del quiz rápido",
-            quiz_options,
-            index=None,
-            label_visibility="collapsed",
-            key=f"home_quiz_choice_{quiz_token}",
-            disabled=quiz_result is not None,
-        )
         if quiz_result is None:
+            home_choice = _choice_buttons(
+                quiz_options,
+                key_prefix=f"home_quiz_{quiz_token}",
+                container=quiz_col,
+            )
             if quiz_col.button("Responder", key=f"home_quiz_button_{quiz_token}", width="stretch"):
                 if home_choice is None:
-                    quiz_col.warning("Elige una alternativa primero.")
+                    quiz_col.warning("Toca una alternativa antes de responder.")
                 else:
                     st.session_state[quiz_result_key] = {
                         "choice": home_choice,
@@ -405,6 +466,11 @@ def render_home() -> None:
                     }
                     st.rerun()
         else:
+            selected = str(quiz_result.get("choice", ""))
+            quiz_col.markdown(
+                _answered_options_html(quiz_options, answer=first_q.answer, selected=selected),
+                unsafe_allow_html=True,
+            )
             explanation = html.escape(_friendly_explanation(first_q.explanation))
             if quiz_result.get("correct"):
                 message = f'<div class="gp-feedback-ok gp-mini-feedback"><strong>¡Bien!</strong> {explanation}</div>'
@@ -475,19 +541,14 @@ def _render_comprehension(run: dict[str, Any], lesson: Lesson) -> None:
         """,
         unsafe_allow_html=True,
     )
-    choice = st.radio(
-        "Alternativas",
-        options,
-        index=None,
-        label_visibility="collapsed",
-        key=f"reading_choice_{run['token']}_{index}",
-        disabled=prior is not None,
-    )
-
     if prior is None:
+        choice = _choice_buttons(
+            options,
+            key_prefix=f"reading_{run['token']}_{index}",
+        )
         if st.button("Responder", type="primary", width="stretch"):
             if choice is None:
-                st.warning("Selecciona una alternativa antes de responder.")
+                st.warning("Toca una alternativa antes de responder.")
             else:
                 is_correct = choice == question.answer
                 run["answers"][answer_key] = {"choice": choice, "correct": is_correct}
@@ -495,6 +556,10 @@ def _render_comprehension(run: dict[str, Any], lesson: Lesson) -> None:
                     run["reading_correct"] += 1
                 st.rerun()
     else:
+        st.markdown(
+            _answered_options_html(options, answer=question.answer, selected=str(prior.get("choice", ""))),
+            unsafe_allow_html=True,
+        )
         explanation = html.escape(_friendly_explanation(question.explanation))
         answer = html.escape(question.answer)
         if prior["correct"]:
@@ -535,19 +600,14 @@ def _render_vocabulary(run: dict[str, Any], lesson: Lesson) -> None:
         """,
         unsafe_allow_html=True,
     )
-    choice = st.radio(
-        "Alternativas",
-        question["options"],
-        index=None,
-        label_visibility="collapsed",
-        key=f"vocab_choice_{run['token']}_{index}",
-        disabled=prior is not None,
-    )
-
     if prior is None:
+        choice = _choice_buttons(
+            question["options"],
+            key_prefix=f"vocab_{run['token']}_{index}",
+        )
         if st.button("Responder", type="primary", width="stretch"):
             if choice is None:
-                st.warning("Selecciona una alternativa antes de responder.")
+                st.warning("Toca una alternativa antes de responder.")
             else:
                 is_correct = choice == question["answer"]
                 run["answers"][answer_key] = {"choice": choice, "correct": is_correct}
@@ -562,6 +622,14 @@ def _render_vocabulary(run: dict[str, Any], lesson: Lesson) -> None:
                 _persist()
                 st.rerun()
     else:
+        st.markdown(
+            _answered_options_html(
+                question["options"],
+                answer=str(question["answer"]),
+                selected=str(prior.get("choice", "")),
+            ),
+            unsafe_allow_html=True,
+        )
         word_pair = f'«{html.escape(item.german)}» significa «{html.escape(item.spanish)}».'
         if prior["correct"]:
             feedback = f'<div class="gp-feedback-ok"><strong>¡Eso es!</strong> {word_pair}</div>'
@@ -723,18 +791,14 @@ def _render_review_run(run: dict[str, Any]) -> None:
         """,
         unsafe_allow_html=True,
     )
-    choice = st.radio(
-        "Alternativas de repaso",
-        options,
-        index=None,
-        label_visibility="collapsed",
-        key=f"review_choice_{run['token']}_{index}",
-        disabled=prior is not None,
-    )
     if prior is None:
+        choice = _choice_buttons(
+            options,
+            key_prefix=f"review_{run['token']}_{index}",
+        )
         if st.button("Responder", type="primary", width="stretch"):
             if choice is None:
-                st.warning("Selecciona una alternativa.")
+                st.warning("Toca una alternativa antes de responder.")
             else:
                 correct = choice == item.spanish
                 run["answers"][answer_key] = {"choice": choice, "correct": correct}
@@ -743,6 +807,10 @@ def _render_review_run(run: dict[str, Any]) -> None:
                 _persist()
                 st.rerun()
     else:
+        st.markdown(
+            _answered_options_html(options, answer=item.spanish, selected=str(prior.get("choice", ""))),
+            unsafe_allow_html=True,
+        )
         feedback_class = "gp-feedback-ok" if prior["correct"] else "gp-feedback-bad"
         if prior["correct"]:
             message = f'<strong>¡Bien!</strong> «{html.escape(item.german)}» significa «{html.escape(item.spanish)}».'

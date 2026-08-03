@@ -195,6 +195,50 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 .st-key-home_features .stButton > button { min-height: 42px !important; margin-top: .25rem; }
 .gp-mini-feedback { margin: .45rem 0 0; padding: .68rem .72rem; font-size: .76rem; }
 
+
+/* Reliable answer controls. These are real Streamlit buttons, not radios whose
+   generated label text can disappear on mobile/Streamlit Cloud. */
+div[class*="st-key-choice_buttons_"] .stButton > button {
+  min-height: 44px !important;
+  margin: 0 0 .38rem !important;
+  padding: .58rem .72rem !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  border: 1.5px solid #d9d0c8 !important;
+  border-radius: 12px !important;
+  background: #ffffff !important;
+  color: #151310 !important;
+  box-shadow: 0 3px 10px rgba(45,30,20,.035) !important;
+}
+div[class*="st-key-choice_buttons_"] .stButton > button p {
+  width: 100% !important;
+  color: #151310 !important;
+  font-size: .82rem !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+  text-align: left !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+div[class*="st-key-choice_buttons_"] .stButton > button[kind="primary"] {
+  border-color: #ed1c24 !important;
+  background: #fff0ee !important;
+  color: #8d1016 !important;
+}
+div[class*="st-key-choice_buttons_"] .stButton > button[kind="primary"] p {
+  color: #8d1016 !important;
+}
+.gp-result-options { display: grid; gap: .38rem; margin: .45rem 0; }
+.gp-result-option {
+  display: grid; grid-template-columns: 1.35rem 1fr auto; align-items: center; gap: .38rem;
+  min-height: 40px; padding: .5rem .62rem; border-radius: 11px;
+  border: 1.5px solid #ddd4cc; background: #fff; color: #171412 !important;
+  font-size: .76rem; line-height: 1.3;
+}
+.gp-result-option strong, .gp-result-option span { color: inherit !important; }
+.gp-result-option.correct { border-color: #1ba45d; background: #eaf8ef; color: #145c39 !important; font-weight: 850; }
+.gp-result-option.wrong { border-color: #d75b61; background: #fff0f1; color: #85252b !important; }
+
 .gp-reading { color: var(--gp-ink) !important; font-size: 1.03rem; line-height: 1.72; }
 .gp-reading p { margin: 0 0 .95rem; color: var(--gp-ink) !important; }
 .gp-progress-label { display: flex; justify-content: space-between; color: var(--gp-muted) !important; font-size: .78rem; font-weight: 850; margin-bottom: .35rem; }

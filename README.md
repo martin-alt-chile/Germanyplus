@@ -1,4 +1,4 @@
-# Germany+
+# Germany+ · v1.3
 
 Aplicación móvil de alemán A1 para **Lula**, construida con Python y Streamlit.
 
@@ -66,3 +66,11 @@ supabase_setup.sql         tabla y fila inicial
 SUPABASE_GUIA.md           pasos de conexión
 tests/                     validaciones
 ```
+
+
+## Corrección v1.3
+
+- Las alternativas ya no usan `st.radio`, porque sus etiquetas podían quedar invisibles en algunos despliegues móviles.
+- El quiz rápido, comprensión, vocabulario y repaso usan botones de alternativa de alto contraste.
+- La opción elegida queda marcada antes de presionar **Responder**.
+- Después de responder se muestran claramente la alternativa correcta y, si corresponde, la selección incorrecta.
